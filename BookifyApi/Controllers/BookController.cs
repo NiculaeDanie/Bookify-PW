@@ -9,6 +9,22 @@ using Microsoft.AspNetCore.Http;
 using Bookify.Domain.Model;
 using Domain;
 using AutoMapper;
+using MediatR;
+using Application.Books.Queries.GetBookList;
+using Application.Books.Queries.GetBookById;
+using Application.Books.Commands.CreateBook;
+using Application.Books.Commands.UpdateBook;
+using Application.Books.Commands.Delete_Book;
+using Application.Books.Queries.GetBookByGenre;
+using Application.Users.Queries.GetBookContent;
+using Application.Books.Queries.GetBookImage;
+using Application.Authors.Queries.GetAuthorBooks;
+using Application.Users.Queries.GetUserFavorites;
+using Application.Users.Queries.GetUserHistory;
+using Application.Books.Commands.AddGenreToBook;
+using Application.Authors.Commands.AddBookToAuthor;
+using Application.Users.Commands.AddBookToFavorites;
+using Application.Users.Commands.DeleteBookFromFavorit;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
@@ -19,14 +35,16 @@ namespace Bookify.Controllers
     [Authorize]
     public class BookController : ControllerBase
     {
-        private ICollection<Book> books = new List<Book>();
+        private readonly IMediator _mediator;
         private readonly ILogger<BookController> _logger;
         private readonly IMapper _mapper;
-        public BookController(ILogger<BookController> logger, IMapper mapper)
+        private readonly UserManager<User> userManager;
+        public BookController(ILogger<BookController> logger, IMapper mapper, IMediator mediator, UserManager<User> userManager)
         {
             _logger = logger;
             _mapper = mapper;
-            books.Add(new Book() { Id= "1"});
+            _mediator = mediator;
+            this.userManager = userManager;
         }
 
         /// <summary>
@@ -38,7 +56,8 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> Get()
         {
-            var mappedResult = _mapper.Map<List<BookGetDto>>(books);
+            var result = await _mediator.Send(new GetBookListQuery());
+            var mappedResult = _mapper.Map<List<BookGetDto>>(result);
             return Ok(mappedResult);
         }
 
@@ -49,17 +68,30 @@ namespace Bookify.Controllers
         /// <param id = "id" ></param>
         /// <response code="200">Returns the Book with that id</response>
         /// <response code="404">If the item does not exist</response>
-        [HttpGet("{id}")]
+        [HttpGet("{id}/{userid}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> Get(string id)
+        public async Task<IActionResult> Get(string id,string userid)
         {
-            Book book = books.FirstOrDefault(x => x.Id == id);
-            if (book == null)
+            var result = await _mediator.Send(new GetBookByIdQuery
             {
+                BookId = id
+            });
+            if (result == null)
+            {
+                _logger.LogWarning(LogEvents.GetItemNotFound, "Book id {id} not found", id);
                 return NotFound();
             }
-            var mappedResult = _mapper.Map<BookGetDto>(book);
+            var mappedResult = _mapper.Map<FullBookDto>(result);
+            
+            if (result.UserFavorites != null)
+            {
+                if (result.UserFavorites.Any(x => x.UserId == userid))
+                {
+                    mappedResult.IsFavorited = true;
+                }
+            }
+
             return Ok(mappedResult);
         }
 
@@ -87,18 +119,21 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> Post([FromForm] BookPutPostDto book)
         {
-            Book newBook = new Book()
+            if (!ModelState.IsValid)
             {
-                Id = Guid.NewGuid().ToString(),
+                _logger.LogWarning("Post Book bad request");
+                return BadRequest(ModelState);
+            }
+            var command = new CreateBookCommand
+            {
                 Title = book.Title,
-                BookGenre = new List<BookGenre>(),
-                AuthorBook = new List<AuthorBook>(),
                 Description = book.Description,
-                ReleaseDate = DateTime.Parse(book.RealeaseDate),
-                ViewCount = 0
+                Content = book.Content,
+                Image = book.Image
             };
-            books.Add(newBook);
-            var mappedResult = _mapper.Map<BookGetDto>(newBook);
+            var result = await _mediator.Send(command);
+            var mappedResult = _mapper.Map<BookGetDto>(result);
+
             return CreatedAtAction(nameof(Get), new { id = mappedResult.Id }, mappedResult);
         }
 
@@ -114,15 +149,23 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> PutAsync(string id, [FromForm] BookPostDto value)
         {
-            Book book = books.FirstOrDefault(x => x.Id == id);
-            if (book == null)
+            var command = new UpdateBookCommand
             {
+                BookId = id,
+                Title = value.Title,
+                Content = value.Content,
+                Description = value.Description,
+                Created = value.RealeaseDate
+            };
+            var result = await _mediator.Send(command);
+
+            if (result == null)
+            {
+                _logger.LogWarning(LogEvents.UpdateItemNotFound, "Book id {id} not found", id);
                 return NotFound();
             }
-            book.Title = value.Title;
-            book.Description = value.Description;
-            var mappedResult = _mapper.Map<BookGetDto>(book);
-            return Ok(mappedResult);
+
+            return NoContent();
         }
 
         /// <summary>
@@ -137,12 +180,15 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> Delete(string id)
         {
-            Book book = books.FirstOrDefault(x => x.Id == id);
-            if (book == null)
+            var command = new DeleteBookCommand { BookId = id };
+            var result = await _mediator.Send(command);
+
+            if (result == null)
             {
+                _logger.LogWarning(LogEvents.DeleteItemNotFound, "Book id {id} not found", id);
                 return NotFound();
-            }
-            books.Remove(book);
+            };
+
             return NoContent();
         }
 
@@ -158,7 +204,19 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetByGenre(string id)
         {
-            return Ok(books);
+            var result = await _mediator.Send(new GetBookByGenreQuery
+            {
+                GenreId = id
+            });
+            if (result == null)
+            {
+                _logger.LogWarning(LogEvents.GetItemNotFound, "Genre id {id} not found", id);
+                return NotFound();
+            }
+
+            var mappedResult = _mapper.Map<List<FullBookDto>>(result);
+
+            return Ok(mappedResult);
         }
 
         /// <summary>
@@ -168,12 +226,23 @@ namespace Bookify.Controllers
         /// <param name = "id" ></param>
         /// <response code="200">Returns the content of the book with that id</response>
         /// /// <response code="404">If the book or content does not exist</response>
-        [HttpGet("Content/{id}")]
+        [HttpGet("Content/{id}/{userid}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> GetContent(string id)
+        public async Task<IActionResult> GetContent(string id, string userid)
         {
-            return Ok();
+            var user = await userManager.FindByIdAsync(userid);
+            var result = await _mediator.Send(new GetBookContentQuery
+            {
+                UserId = user.Email,
+                BookId = id
+            });
+            if (result == null)
+            {
+                _logger.LogWarning(LogEvents.GetItemNotFound, "Book id {id} not found", id);
+                return NotFound();
+            }
+            return File(result.Content, "application/pdf", result.Name); ;
         }
 
         /// <summary>
@@ -188,7 +257,16 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetImage(string id)
         {
-            return Ok();
+            var result = await _mediator.Send(new GetBookImageQuery
+            {
+                BookId = id
+            });
+            if (result == null)
+            {
+                _logger.LogWarning(LogEvents.GetItemNotFound, "Book id {id} not found", id);
+                return NotFound();
+            }
+            return File(result.Content, result.ContentType, result.Name); ;
         }
 
         /// <summary>
@@ -203,8 +281,20 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetByAuthor(string id)
         {
-            return Ok();
+            var result = await _mediator.Send(new GetAuthorBooksQuery
+            {
+                AuthorId = id
+            });
+
+            if (result == null)
+            {
+                _logger.LogWarning(LogEvents.GetItemNotFound, "Author id {id} not found", id);
+                return NotFound();
+            };
+            var mappedResult = _mapper.Map<List<FullBookDto>>(result);
+            return Ok(mappedResult);
         }
+  
 
         /// <summary>
         /// Gets all books in favorites.
@@ -218,7 +308,17 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetFavorites(string id)
         {
-            return Ok();
+            var user = await userManager.FindByIdAsync(id);
+            var result = await _mediator.Send(new GetUserFavoritesQuery
+            {
+                UserId = user.Email
+            });
+            if (result == null)
+            {
+                return NotFound();
+            }
+            var mappedResult = _mapper.Map<List<FullBookDto>>(result);
+            return Ok(mappedResult); ;
         }
 
         /// <summary>
@@ -233,7 +333,17 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetHistory(string id)
         {
-            return Ok();
+            var user = await userManager.FindByIdAsync(id);
+            var result = await _mediator.Send(new GetUserHistoryQuery
+            {
+                UserId = user.Email
+            });
+            if (result == null)
+            {
+                return NotFound();
+            }
+            var mappedResult = _mapper.Map<List<FullBookDto>>(result);
+            return Ok(mappedResult);
         }
 
         /// <summary>
@@ -248,7 +358,17 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> PutAsyncAuthorToBook(string id, string bookid)
         {
-            return Ok();
+            var command = new AddBookToAuthorCommand
+            {
+                AuthorId = id,
+                BookId = bookid
+            };
+            var result = await _mediator.Send(command);
+
+            if (result == null)
+                return NotFound();
+
+            return NoContent();
         }
 
         /// <summary>
@@ -263,7 +383,17 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> PutAsyncGenreToBook(string id, string bookid)
         {
-            return Ok();
+            var command = new AddGenreToBookCommand
+            {
+                GenreId = id,
+                BookId = bookid
+            };
+            var result = await _mediator.Send(command);
+
+            if (result == null)
+                return NotFound();
+
+            return NoContent();
         }
 
         /// <summary>
@@ -273,12 +403,34 @@ namespace Bookify.Controllers
         /// <param name = "id" ></param>
         /// <response code="200">Ok if successfull</response>
         /// /// <response code="404">If the book does not exist</response>
-        [HttpPut("Favorites/{id}")]
+        [HttpPut("Favorites/{bookid}/{userid}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> PutFavorites(string id, string bookid)
+        public async Task<IActionResult> PutFavorites(string userid, string bookid)
         {
-            return Ok();
+            var user = await userManager.FindByIdAsync(userid);
+            var result = await _mediator.Send(new AddBookToFavoritesCommand
+            {
+                UserId = user.Email,
+                BookId = bookid
+            });
+            if (result == null)
+                return NoContent();
+            var mappedResult = _mapper.Map<FullBookDto>(result);
+            return Ok(mappedResult);
+        }
+
+        [HttpDelete("Favorites/{bookid}/{userid}")]
+        public async Task<IActionResult> Delete(string userid, string bookid)
+        {
+            var user = await userManager.FindByIdAsync(userid);
+            var command = new DeleteBookFromFavoritesCommand { UserId = user.Email, BookId = bookid };
+            var result = await _mediator.Send(command);
+
+            if (result == null)
+                return NotFound();
+            var mappedResult = _mapper.Map<BookGetDto>(result);
+            return Ok(mappedResult);
         }
 
         /// <summary>

@@ -37,7 +37,7 @@ namespace DAL.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Author");
+                    b.ToTable("Authors");
                 });
 
             modelBuilder.Entity("Bookify.Domain.Model.Book", b =>
@@ -61,7 +61,7 @@ namespace DAL.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Book");
+                    b.ToTable("Books");
                 });
 
             modelBuilder.Entity("Bookify.Domain.Model.User", b =>
@@ -137,25 +137,19 @@ namespace DAL.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"), 1L, 1);
 
-                    b.Property<int>("AuthorId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("AuthorId1")
+                    b.Property<string>("AuthorId")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<int>("BookId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("BookId1")
+                    b.Property<string>("BookId")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AuthorId1");
+                    b.HasIndex("AuthorId");
 
-                    b.HasIndex("BookId1");
+                    b.HasIndex("BookId");
 
                     b.ToTable("AuthorBook");
                 });
@@ -168,25 +162,19 @@ namespace DAL.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"), 1L, 1);
 
-                    b.Property<int>("BookId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("BookId1")
+                    b.Property<string>("BookId")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<int>("GenreId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("GenreId1")
+                    b.Property<string>("GenreId")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BookId1");
+                    b.HasIndex("BookId");
 
-                    b.HasIndex("GenreId1");
+                    b.HasIndex("GenreId");
 
                     b.ToTable("BookGenre");
                 });
@@ -202,7 +190,7 @@ namespace DAL.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Genre");
+                    b.ToTable("Genres");
                 });
 
             modelBuilder.Entity("Domain.UserBook", b =>
@@ -213,10 +201,7 @@ namespace DAL.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"), 1L, 1);
 
-                    b.Property<int>("BookId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("BookId1")
+                    b.Property<string>("BookId")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
@@ -226,7 +211,7 @@ namespace DAL.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BookId1");
+                    b.HasIndex("BookId");
 
                     b.HasIndex("UserId");
 
@@ -241,10 +226,7 @@ namespace DAL.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"), 1L, 1);
 
-                    b.Property<int>("BookId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("BookId1")
+                    b.Property<string>("BookId")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
@@ -254,7 +236,7 @@ namespace DAL.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BookId1");
+                    b.HasIndex("BookId");
 
                     b.HasIndex("UserId");
 
@@ -398,13 +380,13 @@ namespace DAL.Migrations
                 {
                     b.HasOne("Bookify.Domain.Model.Author", "Author")
                         .WithMany("AuthorBook")
-                        .HasForeignKey("AuthorId1")
+                        .HasForeignKey("AuthorId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("Bookify.Domain.Model.Book", "Book")
                         .WithMany("AuthorBook")
-                        .HasForeignKey("BookId1")
+                        .HasForeignKey("BookId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -417,13 +399,13 @@ namespace DAL.Migrations
                 {
                     b.HasOne("Bookify.Domain.Model.Book", "Book")
                         .WithMany("BookGenre")
-                        .HasForeignKey("BookId1")
+                        .HasForeignKey("BookId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("Domain.Genre", "Genre")
                         .WithMany("BookGenre")
-                        .HasForeignKey("GenreId1")
+                        .HasForeignKey("GenreId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -435,8 +417,8 @@ namespace DAL.Migrations
             modelBuilder.Entity("Domain.UserBook", b =>
                 {
                     b.HasOne("Bookify.Domain.Model.Book", "Book")
-                        .WithMany()
-                        .HasForeignKey("BookId1")
+                        .WithMany("UserBook")
+                        .HasForeignKey("BookId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -454,8 +436,8 @@ namespace DAL.Migrations
             modelBuilder.Entity("Domain.UserFavorites", b =>
                 {
                     b.HasOne("Bookify.Domain.Model.Book", "Book")
-                        .WithMany()
-                        .HasForeignKey("BookId1")
+                        .WithMany("UserFavorites")
+                        .HasForeignKey("BookId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -531,6 +513,10 @@ namespace DAL.Migrations
                     b.Navigation("AuthorBook");
 
                     b.Navigation("BookGenre");
+
+                    b.Navigation("UserBook");
+
+                    b.Navigation("UserFavorites");
                 });
 
             modelBuilder.Entity("Bookify.Domain.Model.User", b =>

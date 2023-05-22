@@ -16,6 +16,8 @@ namespace Bookify.Domain.Model
         public DateTime ReleaseDate { get; set; }
         public string Description { get; set; }
         public ICollection<BookGenre> BookGenre { get; set; }
+        public ICollection<UserBook> UserBook { get; set; }
+        public ICollection<UserFavorites> UserFavorites { get; set; }
         public int ViewCount { get; set; }
 
         public Book()

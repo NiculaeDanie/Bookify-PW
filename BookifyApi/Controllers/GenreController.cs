@@ -1,8 +1,13 @@
 ﻿
+using Application.Genres.Commands.CreateGenre;
+using Application.Genres.Commands.DeleteGenre;
+using Application.Genres.Queries.GetGenreById;
+using Application.Genres.Queries.GetGenreList;
 using AutoMapper;
 using Bookify.Dto;
 using Bookify.Middleware;
 using Domain;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections;
@@ -16,13 +21,14 @@ namespace Bookify.Controllers
     [Authorize]
     public class GenreController : ControllerBase
     {
-        private ICollection<Genre> genres = new List<Genre>();
-        private readonly ILogger<GenreController> _logger;
         private readonly IMapper _mapper;
-        public GenreController(ILogger<GenreController> logger, IMapper mapper)
+        private readonly ILogger<GenreController> _logger;
+        private readonly IMediator _mediator;
+        public GenreController(ILogger<GenreController> logger, IMapper mapper, IMediator mediator)
         {
             _logger = logger;
             _mapper = mapper;
+            _mediator = mediator;
         }
 
         /// <summary>
@@ -34,7 +40,8 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> Get()
         {
-            var mappedResult = _mapper.Map<List<GenreGetDto>>(genres);
+            var result = await _mediator.Send(new GetGenreListQuery());
+            var mappedResult = _mapper.Map<List<GenreGetDto>>(result);
             return Ok(mappedResult);
         }
 
@@ -50,12 +57,16 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> Get(string id)
         {
-            Genre genre = genres.FirstOrDefault(x => x.Id == id);
-            if(genre == null)
+            var result = await _mediator.Send(new GetGenreByIdQuery
             {
+                Id = id
+            });
+            if (result == null)
+            {
+                _logger.LogWarning(LogEvents.GetItemNotFound, "Genre id {id} not found", id);
                 return NotFound();
             }
-            var mappedResult = _mapper.Map<GenreGetDto>(genre);
+            var mappedResult = _mapper.Map<GenreGetDto>(result);
             return Ok(mappedResult);
         }
 
@@ -79,14 +90,18 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> Post([FromForm] GenrePutPostDto value)
         {
-            Genre genre = new Genre()
+            if (!ModelState.IsValid)
             {
-                Id = Guid.NewGuid().ToString(),
-                Name = value.Title,
-                BookGenre = new List<BookGenre>()
+                _logger.LogWarning("Post Book bad request");
+                return BadRequest(ModelState);
+            }
+            var command = new CreateGenreCommand
+            {
+                Genre = value.Title
             };
-            genres.Add(genre);
-            var mappedResult = _mapper.Map<GenreGetDto>(genre);
+            var result = await _mediator.Send(command);
+            var mappedResult = _mapper.Map<GenreGetDto>(result);
+
             return CreatedAtAction(nameof(Get), new { id = mappedResult.Id }, mappedResult);
         }
 
@@ -102,13 +117,17 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> Delete(string id)
         {
-            Genre genre = genres.FirstOrDefault(x => x.Id == id);
-            if(genre == null)
+            var command = new DeleteGenreCommand { GenreId = id };
+            var result = await _mediator.Send(command);
+
+            if (result == null)
             {
+                _logger.LogWarning(LogEvents.DeleteItemNotFound, "Genre id {id} not found", id);
                 return NotFound();
-            }
-            genres.Remove(genre);
+            };
+
             return NoContent();
         }
     }
+    
 }

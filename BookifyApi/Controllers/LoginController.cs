@@ -75,9 +75,11 @@ namespace BookifyApi.Controllers
                     claims: authClaims,
                     signingCredentials: new SigningCredentials(authSigningKey, SecurityAlgorithms.HmacSha256)
                     );
+                
 
                 return Ok(new
                 {
+                    id = user.Id,
                     role = userRoles,
                     token = new JwtSecurityTokenHandler().WriteToken(token),
                     expiration = token.ValidTo

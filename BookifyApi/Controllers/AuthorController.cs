@@ -1,9 +1,15 @@
 ﻿
+using Application.Authors.Commands.CreateAuthor;
+using Application.Authors.Commands.DeleteAuthor;
+using Application.Authors.Commands.UpdateAuthor;
+using Application.Authors.Queries.GetAuthorById;
+using Application.Authors.Queries.GetAuthorList;
 using AutoMapper;
 using Bookify.Domain.Model;
 using Bookify.Dto;
 using Bookify.Middleware;
 using Domain;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.EventSource;
@@ -17,13 +23,14 @@ namespace Bookify.Controllers
     [Authorize]
     public class AuthorController : ControllerBase
     {
-        private ICollection<Author> authors = new List<Author>();
         private readonly ILogger<GenreController> _logger;
         private readonly IMapper _mapper;
-        public AuthorController(ILogger<GenreController> logger, IMapper mapper)
+        private readonly IMediator _mediator;
+        public AuthorController(ILogger<GenreController> logger, IMapper mapper, IMediator mediator)
         {
             _logger = logger;
             _mapper = mapper;
+            _mediator = mediator;
         }
 
         /// <summary>
@@ -35,7 +42,9 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> Get()
         {
-            return Ok(authors);
+            var result = await _mediator.Send(new GetAuthorListQuery());
+            var mappedResult = _mapper.Map<List<AuthorGetDto>>(result);
+            return Ok(mappedResult);
         }
 
         /// <summary>
@@ -50,12 +59,13 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> Get(string id)
         {
-            Author author = authors.FirstOrDefault(x => x.Id == id);
-            if (author == null)
+            var result = await _mediator.Send(new GetAuthorByIdQuery { Id = id });
+            if (result == null)
             {
+                _logger.LogWarning(LogEvents.GetItemNotFound, "Author id {id} not found", id);
                 return NotFound();
             }
-            var mappedResult = _mapper.Map<AuthorGetDto>(author);
+            var mappedResult = _mapper.Map<AuthorGetDto>(result);
             return Ok(mappedResult);
         }
 
@@ -80,15 +90,19 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> Post([FromForm] AuthorPutPostDto value)
         {
-            Author author = new Author()
+            if (!ModelState.IsValid)
             {
-                Id = Guid.NewGuid().ToString(),
+                
+                return BadRequest(ModelState);
+            }
+            var command = new CreateAuthorCommand
+            {
                 Name = value.Name,
-                AuthorBook = new List<AuthorBook>(),
-                Description = value.Description,
+                Description = value.Description
             };
-            authors.Add(author);
-            var mappedResult = _mapper.Map<AuthorGetDto>(author);
+            var result = await _mediator.Send(command);
+            var mappedResult = _mapper.Map<AuthorGetDto>(result);
+
             return CreatedAtAction(nameof(Get), new { id = mappedResult.Id }, mappedResult);
         }
 
@@ -104,15 +118,21 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> Put(string id, [FromBody] AuthorPutPostDto value)
         {
-            Author author = authors.FirstOrDefault(x => x.Id == id);
-            if (author == null)
+            var command = new UpdateAuthorCommand
             {
+                AuthorId = id,
+                Name = value.Name,
+                Description = value.Description,
+            };
+            var result = await _mediator.Send(command);
+
+            if (result == null)
+            {
+                _logger.LogWarning(LogEvents.UpdateItemNotFound, "Author id {id} not found", id);
                 return NotFound();
             }
-            author.Name = value.Name;
-            author.Description = value.Description;
-            var mappedResult = _mapper.Map<AuthorGetDto>(author);
-            return Ok(mappedResult);
+
+            return NoContent();
         }
 
         /// <summary>
@@ -127,12 +147,15 @@ namespace Bookify.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> Delete(string id)
         {
-            Author author = authors.FirstOrDefault(x => x.Id == id);
-            if (author == null)
+            var command = new DeleteAuthorCommand { AuthorId = id };
+            var result = await _mediator.Send(command);
+
+            if (result == null)
             {
+                _logger.LogWarning(LogEvents.DeleteItemNotFound, "Author id {id} not found", id);
                 return NotFound();
-            }
-            authors.Remove(author);
+            };
+
             return NoContent();
         }
     }
